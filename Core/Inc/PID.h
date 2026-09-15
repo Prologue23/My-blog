@@ -98,6 +98,8 @@ extern "C" {
 #define C620_VEL_OUTPUT_MAX         (C620_CMD_RAW_MAX / 3)
 #define C620_VEL_DEADBAND           10
 
+#define constant_target_rpm         3000.0f  // 固定目标转速（RPM）
+
 /* 位置环（仅 C620_POS_LOOP_ENABLE = 1） */
 #if C620_POS_LOOP_ENABLE
 #define C620_POS_KP                 8.0f
