@@ -98,7 +98,6 @@ int main(void)
   /* ---- C620 电调初始化序列 ---- */
   C620_BindCAN(&hcan1);
   C620_ConfigFilter();
-  C620_ConfigMotorID(C620_MOTOR_ID_1);
   HAL_CAN_Start(&hcan1);
   HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
   C620_Init();
@@ -435,39 +434,6 @@ void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
     }
 }
 
-/**
- * @brief  CAN1 RX FIFO0 消息到达回调 → 解析 C620 反馈帧
- *
- *         C620 反馈帧格式（CAN ID 0x201~0x208，8 字节）：
- *           Byte0-1: Angle[13:0]   uint16 大端，0~16383
- *           Byte2-3: Speed[15:0]  int16  大端，单位 RPM
- *           Byte4-5: Current[15:0]int16  大端
- *           Byte6  : Temperature  uint8  ℃
- *           Byte7  : Reserved
- */
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-    CAN_RxHeaderTypeDef rx_header = {0};
-    uint8_t rx_data[8] = {0};
-
-    if (hcan->Instance == CAN1)
-    {
-        if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rx_header, rx_data) != HAL_OK)
-            return;
-
-        if (rx_header.StdId == C620_FEEDBACK_FRAME_ID(C620_MOTOR_ID_1))
-        {
-            uint16_t angle   = (uint16_t)((rx_data[0] << 8) | rx_data[1]);
-            int16_t  speed   = (int16_t)((rx_data[2] << 8) | rx_data[3]);
-            int16_t  current = (int16_t)((rx_data[4] << 8) | rx_data[5]);
-            uint8_t  temp    = rx_data[6];
-
-            C620_UpdateFeedback(angle, speed, current, temp);
-        }
-
-        HAL_CAN_ActivateNotification(hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
-    }
-}
 
 /* USER CODE END 4 */
 

@@ -15,15 +15,14 @@
   *
   * 使用流程（参考 main.c）：
   *   1. MX_CAN1_Init() → 配置 CAN
-  *   2. C620_ConfigMotorID(1)  → 给电机 1 分配 CAN ID 0x201
-  *   3. C620_ConfigFilter()    → 配 CAN 过滤器接收 0x201~0x208
-  *   4. HAL_CAN_Start(&hcan1)
-  *   5. HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
-  *   6. C620_Init()            → 模块初始化
-  *   7. C620_Control_Start()   → 启动控制
-  *   8. TIM_CH_Start(1kHz)     → 启动 1kHz 定时器，回调里调 C620_CAN_1kHz_Task()
-  *   9. HAL_CAN_RxFifo0MsgPendingCallback() → 解析反馈帧 → C620_UpdateFeedback()
-  *  10. 主循环/上层逻辑 → C620_SetVelocityTarget(RPM)
+  *   2. C620_ConfigFilter()    → 配 CAN 过滤器接收 0x201~0x208
+  *   3. HAL_CAN_Start(&hcan1)
+  *   4. HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING)
+  *   5. C620_Init()            → 模块初始化
+  *   6. C620_Control_Start()   → 启动控制
+  *   7. TIM_CH_Start(1kHz)     → 启动 1kHz 定时器，回调里调 C620_CAN_1kHz_Task()
+  *   8. HAL_CAN_RxFifo0MsgPendingCallback() → 解析反馈帧 → C620_UpdateFeedback()
+  *   9. 主循环/上层逻辑 → C620_SetVelocityTarget(RPM)
   *
   ******************************************************************************
   */
@@ -62,7 +61,7 @@ extern "C" {
 #define C620_CONFIG_FRAME_ID        0x700u      /* 电机 ID 配置帧                */
 
 /* ---------- 控制模式 ---------- */
-#define C620_CTRL_MODE_VOLTAGE      0   /* 电压模式 CAN ID 0x1FF/0x2FF，±6000 */
+#define C620_CTRL_MODE_VOLTAGE      0   /* 电压模式 */
 #define C620_CTRL_MODE_CURRENT      1   /* 电流模式 CAN ID 0x200，±16384     */
 #ifndef C620_CTRL_MODE
 #define C620_CTRL_MODE              C620_CTRL_MODE_CURRENT
@@ -86,6 +85,8 @@ extern "C" {
 #define C620_INNER_TEST_TARGET_RPM  300
 #endif
 
+/* ---------- 超时参数 ----------*/
+#define C620_FEEDBACK_TIMEOUT_MS 50u
 /* ============================================================
  *  PID 参数宏（给合理起始值，调参时修改）
  * ============================================================ */
@@ -179,14 +180,6 @@ extern int32_t            C620_PosTarget;
  */
 void C620_BindCAN(CAN_HandleTypeDef *hcan);
 
-/**
- * @brief  配置电机 ID（通过 CAN 配置帧 0x700）
- *         C620 电调出厂默认 ID 为 1，如需修改调用此函数。
- *         注意：电机 1~4 发送到 CAN ID 0x701，电机 5~8 发送到 0x702。
- * @param  motor_id : 目标电机 ID（1~8）
- * @retval None
- */
-void C620_ConfigMotorID(uint8_t motor_id);
 
 /**
  * @brief  配置 CAN 过滤器，接收 C620 反馈帧 0x201~0x208

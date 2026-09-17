@@ -1,4 +1,5 @@
 #include "Can.h"
+#include "PID.h"
 #include "stm32f4xx_hal_can.h"
 #include <stdint.h>
 
@@ -76,3 +77,37 @@ void C620_CAN_Receive(uint32_t *ID, uint8_t *DATA, uint8_t *LEN)
         // Remote frame
     }
 }
+
+
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
+{
+    CAN_RxHeaderTypeDef rx_header = {0};
+    uint8_t rx_data[8] = {0};
+
+    if (hcan->Instance == CAN1)
+    {
+        if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rx_header, rx_data) != HAL_OK)
+            return;
+
+        if (rx_header.StdId == C620_FEEDBACK_FRAME_ID(C620_MOTOR_ID_1))
+        {
+            uint16_t angle   = (uint16_t)((rx_data[0] << 8) | rx_data[1]);
+            int16_t  speed   = (int16_t)((rx_data[2] << 8) | rx_data[3]);
+            int16_t  current = (int16_t)((rx_data[4] << 8) | rx_data[5]);
+            uint8_t  temp    = rx_data[6];
+
+            C620_UpdateFeedback(angle, speed, current, temp);
+            C620_Feedback_update();
+        }
+
+        HAL_CAN_ActivateNotification(hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+    }
+}
+
+void C620_Feedback_update(void)
+{
+    last_feedback_tick = HAL_GetTick();
+}
+
+

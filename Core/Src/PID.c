@@ -11,6 +11,7 @@
   */
 
 #include "PID.h"
+#include "stm32f4xx_hal.h"
 #include <string.h>
 
 /* ============================================================
@@ -36,7 +37,7 @@ static float       s_last_vel_cmd = 0.0f;
  *  全局变量（PID.h 中 extern）
  * ============================================================ */
 
-C620_Feedback_t C620_Feedback;
+C620_Feedback_t volatile C620_Feedback;
 float           C620_VelocityTarget = 0.0f;
 int16_t         C620_DebugCommand   = 0;
 uint8_t         C620_CtrlReady      = 0;
@@ -214,45 +215,13 @@ void C620_BindCAN(CAN_HandleTypeDef *hcan)
 }
 
 /**
- * @brief 配置电机 ID（通过 0x700 配置帧）
- *
- *        C620 电机 ID 配置帧格式：
- *          CAN ID 0x701 → 配置电机 1~4
- *          CAN ID 0x702 → 配置电机 5~8
- *          数据 Byte0: 目标电机 ID (1~4 发送到 0x701；5~8 发送到 0x702)
- *          Byte6-7:     校验 CRC-16
- *        （简化版：仅支持出厂默认 ID=1，若修改需自行计算 CRC）
- */
-void C620_ConfigMotorID(uint8_t motor_id)
-{
-    uint8_t tx_buf[8] = {0};
-    uint32_t config_id = (motor_id <= 4u) ? 0x701u : 0x702u;
-
-    if (C620_hcan == NULL) return;
-
-    motor_id -= 1u;
-    tx_buf[0] = motor_id;
-    tx_buf[1] = 0x00;
-    tx_buf[2] = 0x00;
-    tx_buf[3] = 0x00;
-    tx_buf[4] = 0x00;
-    tx_buf[5] = 0x00;
-    tx_buf[6] = 0x00;
-    tx_buf[7] = 0x00;
-
-    CAN_SendControlFrame(config_id, tx_buf);
-}
-
-/**
  * @brief 配置 CAN 过滤器，接收 C620 反馈帧 0x201 ~ 0x208
  *
  *        过滤器配置策略：
  *          - 过滤器 Bank 0，Mask 模式，32-bit 配置
- *          - Filter ID  = 0x00002000  (std_id << 5 = 0x200 << 5)
- *          - Filter Mask= 0xFFFFFE00  (bit 0~7 忽略，bit 11~31 全匹配)
- *          - 这样会接收 0x200 ~ 0x2FF 所有帧
- *          - 也可以精确匹配 0x201~0x208：Mask=0xFFFFFE00
- *            配合 Filter ID=0x00002020 或直接设 Filter ID=0x00002000 都可以
+ *          - Filter ID  = 0x00000000  
+ *          - Filter Mask= 0x00000000  
+ *          - 这样会接收所有帧
  */
 HAL_StatusTypeDef C620_ConfigFilter(void)
 {
@@ -418,7 +387,7 @@ void C620_CAN_1kHz_Task(void)
 
         /* Kd 项：用速度差分近似加速度 */
         vel_output = vel_params.kp * (float)velocity_error -
-                     vel_params.kd * (float)((int32_t)velocity_target -
+                     vel_params.kd * (float)((int32_t)C620_Feedback.speed_filtered -
                                              (int32_t)s_last_velocity) +
                      vel_params.ki * s_vel_pid_state.integral;
 
@@ -433,6 +402,13 @@ void C620_CAN_1kHz_Task(void)
     }
 
     /* ---- 打包并发送 CAN 控制帧 0x200 ---- */
+    if (HAL_GetTick() - last_feedback_tick > C620_FEEDBACK_TIMEOUT_MS)
+    {
+        command = 0;
+    }  //超时发送0帧
+    else 
+    {
     PackCommand(tx_buf, command, C620_MOTOR_ID_1);
     CAN_SendControlFrame(C620_CTRL_FRAME_ID, tx_buf);
+    }
 }
