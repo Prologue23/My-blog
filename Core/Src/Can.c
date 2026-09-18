@@ -90,24 +90,17 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
         if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rx_header, rx_data) != HAL_OK)
             return;
 
-        if (rx_header.StdId == C620_FEEDBACK_FRAME_ID(C620_MOTOR_ID_1))
+        if (rx_header.StdId == CAN_FEEDBACK_ID(MOTOR_ID))
         {
-            uint16_t angle   = (uint16_t)((rx_data[0] << 8) | rx_data[1]);
-            int16_t  speed   = (int16_t)((rx_data[2] << 8) | rx_data[3]);
-            int16_t  current = (int16_t)((rx_data[4] << 8) | rx_data[5]);
-            uint8_t  temp    = rx_data[6];
+            MotorInfo fb;
+            fb.angle   = (uint16_t)((rx_data[0] << 8) | rx_data[1]);
+            fb.speed   = (int16_t)((rx_data[2] << 8) | rx_data[3]);
+            fb.current = (int16_t)((rx_data[4] << 8) | rx_data[5]);
+            fb.temp    = rx_data[6];
 
-            C620_UpdateFeedback(angle, speed, current, temp);
-            C620_Feedback_update();
+            UpdateFeedback(&fb);
         }
 
         HAL_CAN_ActivateNotification(hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
     }
 }
-
-void C620_Feedback_update(void)
-{
-    last_feedback_tick = HAL_GetTick();
-}
-
-

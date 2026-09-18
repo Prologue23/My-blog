@@ -1,414 +1,156 @@
-/**
-  ******************************************************************************
-  * @file    PID.c
-  * @brief   RoboMaster C620 电调 PID 控制模块实现
-  *
-  * 依赖：
-  *   - stm32f4xx_hal_can.h   (CAN 外设)
-  *   - stm32f4xx_hal_cortex.h(SysTick / HAL_GetTick)
-  *
-  ******************************************************************************
-  */
-
 #include "PID.h"
+#include "Can.h"
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
-/* ============================================================
- *  全局句柄（绑定外部 hcan1）
- * ============================================================ */
+//PID
+#define KP              0.6f
+#define KI              0.005f
+#define KD              0.5f
+#define TARGET_RPM      1000
+#define MAX_OUT         16384
+#define MAX_INTEGRAL    6000
 
-CAN_HandleTypeDef *C620_hcan = NULL;
+#define POS_KP          2.3f
+#define POS_KI          0.0f
+#define POS_KD          50.0f
+#define MAX_SPEED       3000
+#define POS_INTEGRAL_MAX 1000.0f
 
-/* ============================================================
- *  私有变量
- * ============================================================ */
+#define STEP_INTERVAL_MS  200
+#define STEP_ANGLE        1000
 
-static uint32_t s_ctrl_start_ms   = 0;
-static int16_t  s_last_velocity   = 0;
-static PID_State_t s_vel_pid_state;
+//CAN
+static volatile MotorInfo feedback;
+static CAN_HandleTypeDef *can;
+static volatile float    integral;
+static float             last_error;
+static float             pos_integral;
+static float             pos_last_error;
+static uint32_t          start_ms;
+static float             target_angle;
+static uint32_t          step_counter;
 
-#if C620_POS_LOOP_ENABLE
-static PID_State_t s_pos_pid_state;
-static float       s_last_vel_cmd = 0.0f;
-#endif
-
-/* ============================================================
- *  全局变量（PID.h 中 extern）
- * ============================================================ */
-
-C620_Feedback_t volatile C620_Feedback;
-float           C620_VelocityTarget = 0.0f;
-int16_t         C620_DebugCommand   = 0;
-uint8_t         C620_CtrlReady      = 0;
-
-#if C620_POS_LOOP_ENABLE
-int32_t         C620_PosTarget      = 0;
-#endif
-
-/* ============================================================
- *  私有工具函数
- * ============================================================ */
-
-/**
- * @brief 角度误差归一化到 [-res/2, +res/2]
- *         C620 编码器 14 位，res=16384 → 归一化到 [-8192, +8192]
- */
-static int32_t NormalizeAngleError(int32_t error, uint32_t resolution)
+void Motor_Init(void)
 {
-    int32_t half = (int32_t)(resolution / 2u);
-    if (error >  half) error -= (int32_t)resolution;
-    if (error < -half) error += (int32_t)resolution;
-    return error;
+    CAN_FilterTypeDef f = {0};
+
+    can = &hcan1;
+
+    f.FilterBank           = 0;
+    f.FilterMode           = CAN_FILTERMODE_IDMASK;
+    f.FilterScale          = CAN_FILTERSCALE_32BIT;
+    f.FilterFIFOAssignment = CAN_FILTER_FIFO0;
+    f.FilterActivation     = ENABLE;
+    HAL_CAN_ConfigFilter(can, &f);
+
+    HAL_CAN_Start(can);
+    HAL_CAN_ActivateNotification(can, CAN_IT_RX_FIFO0_MSG_PENDING);
+
+    memset(&feedback, 0, sizeof(feedback));
+    integral        = 0;
+    last_error      = 0;
+    pos_integral    = 0;
+    pos_last_error  = 0;
+    start_ms        = HAL_GetTick();
+    target_angle    = 0;
+    step_counter    = 0;
 }
 
-/**
- * @brief 通用位置式 PID（积分死区衰减、输出限幅）
- */
-static float PID_Calculate(const PID_Params_t *params,
-                           PID_State_t        *state,
-                           int32_t             target,
-                           int32_t             actual)
+void UpdateFeedback(const MotorInfo *fb)
 {
-    int32_t error      = target - actual;
-    int32_t error_diff = error - state->last_error;
-    float   output     = 0.0f;
-
-    if (error < -params->deadband || error > params->deadband)
-    {
-        state->integral += (float)error;
-        if (state->integral >  params->i_limit)  state->integral =  params->i_limit;
-        if (state->integral < -params->i_limit)  state->integral = -params->i_limit;
-    }
-    else
-    {
-        state->integral *= 0.94f;
-    }
-
-    output = params->kp * (float)error +
-             params->ki * state->integral +
-             params->kd * (float)error_diff;
-
-    if (output >  params->output_max)
-    {
-        state->integral -= ((float)output - (float)params -> output_max)/params->ki;
-    }
-    else if (output < params -> output_min)
-    {
-        state->integral -= ((float)output - (float)params -> output_min)/params->ki;
-    }  //防止积分过饱和
-
-    if (output > (float) params->output_max) output = (float) params->output_max;
-    if (output < (float) params->output_min) output = (float) params->output_min;
-
-    state->last_error      = error;
-    state->last_derivative = output;
-    state->last_output     = output;
-
-    return output;
+    feedback = *fb;
 }
 
-/**
- * @brief 把命令打包进 C620 控制帧 0x200 的指定电机字段
- */
-static void PackCommand(uint8_t *tx_buf, int16_t command, uint8_t motor_id)
+static void PackCmd(uint8_t *buf, int16_t current, uint8_t id)
 {
-    uint8_t offset = (uint8_t)C620_CMD_OFFSET(motor_id);
-    tx_buf[offset]     = (uint8_t)((uint16_t)command >> 8);
-    tx_buf[offset + 1] = (uint8_t)((uint16_t)command);
+    uint8_t off = (id - 1) * 2;
+    buf[off]     = (current >> 8) & 0xFF;
+    buf[off + 1] = current & 0xFF;
 }
 
-/**
- * @brief 向 CAN 发送帧（非阻塞，直接调 HAL_CAN_AddTxMessage）
- */
-static void CAN_SendControlFrame(uint32_t std_id, uint8_t *data)
+static void RunSpeedPID(float target_rpm)
 {
-    CAN_TxHeaderTypeDef tx_header = {0};
-    uint32_t tx_mailbox = 0;
+    uint8_t tx[8] = {0};
+    float error, out;
 
-    if (C620_hcan == NULL) return;
-
-    HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_10);
-
-    tx_header.StdId = std_id;
-    tx_header.IDE   = CAN_ID_STD;
-    tx_header.RTR   = CAN_RTR_DATA;
-    tx_header.DLC   = 8;
-
-    if (HAL_CAN_AddTxMessage(C620_hcan, &tx_header, data, &tx_mailbox) != HAL_OK)
-    {
-        HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_11);
-    }
-}
-
-/* ============================================================
- *  位置环专属（仅 C620_POS_LOOP_ENABLE = 1）
- * ============================================================ */
-
-#if C620_POS_LOOP_ENABLE
-
-/**
- * @brief 连续角度追踪（跨 0↔16383 跳变处理）
- */
-static int32_t ContinuousPos(void)
-{
-    static int32_t angle_cont = 0;
-    static uint16_t last_angle = 0;
-    static uint8_t  angle_init = 0;
-    int32_t raw   = (int32_t)C620_Feedback.angle_raw;
-    int32_t delta;
-
-    if (!angle_init)
-    {
-        angle_cont = raw;
-        angle_init = 1;
-    }
-    else
-    {
-        delta = raw - (int32_t)last_angle;
-        delta = NormalizeAngleError(delta, C620_ENCODER_RESOLUTION);
-        angle_cont += delta;
-    }
-    last_angle = (uint16_t)raw;
-    return angle_cont;
-}
-
-static float PositionLoop_Calculate(void)
-{
-    static const PID_Params_t pos_params = {
-        .kp         = C620_POS_KP,
-        .ki         = C620_POS_KI,
-        .kd         = C620_POS_KD,
-        .i_limit    = C620_POS_I_LIMIT,
-        .output_max =  C620_POS_OUTPUT_MAX,
-        .output_min = -C620_POS_OUTPUT_MAX,
-        .deadband   = C620_POS_DEADBAND,
-    };
-
-    int32_t actual = ContinuousPos() % (int32_t)C620_ENCODER_RESOLUTION;
-    int32_t err    = NormalizeAngleError(C620_PosTarget - actual,
-                                         C620_ENCODER_RESOLUTION);
-    float   out    = PID_Calculate(&pos_params, &s_pos_pid_state,
-                                   C620_PosTarget, actual);
-
-    if (out >  s_last_vel_cmd + C620_POS_RAMP_RPM_PER_MS)
-        out =  s_last_vel_cmd + C620_POS_RAMP_RPM_PER_MS;
-    if (out <  s_last_vel_cmd - C620_POS_RAMP_RPM_PER_MS)
-        out =  s_last_vel_cmd - C620_POS_RAMP_RPM_PER_MS;
-    s_last_vel_cmd = out;
-
-    return out;
-}
-
-#endif /* C620_POS_LOOP_ENABLE */
-
-/* ============================================================
- *  公开接口实现
- * ============================================================ */
-
-/**
- * @brief 绑定 CAN 句柄。在 MX_CAN1_Init() 之后调用。
- */
-void C620_BindCAN(CAN_HandleTypeDef *hcan)
-{
-    C620_hcan = hcan;
-}
-
-/**
- * @brief 配置 CAN 过滤器，接收 C620 反馈帧 0x201 ~ 0x208
- *
- *        过滤器配置策略：
- *          - 过滤器 Bank 0，Mask 模式，32-bit 配置
- *          - Filter ID  = 0x00000000  
- *          - Filter Mask= 0x00000000  
- *          - 这样会接收所有帧
- */
-HAL_StatusTypeDef C620_ConfigFilter(void)
-{
-    CAN_FilterTypeDef sFilterConfig = {0};
-
-    if (C620_hcan == NULL) return HAL_ERROR;
-
-    sFilterConfig.FilterBank           = 0;
-    sFilterConfig.FilterMode           = CAN_FILTERMODE_IDMASK;
-    sFilterConfig.FilterScale          = CAN_FILTERSCALE_32BIT;
-    sFilterConfig.FilterIdHigh         = 0x0000;
-    sFilterConfig.FilterIdLow          = 0x0000;
-    sFilterConfig.FilterMaskIdHigh     = 0x0000;
-    sFilterConfig.FilterMaskIdLow      = 0x0000;
-    sFilterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-    sFilterConfig.FilterActivation     = ENABLE;
-
-    return HAL_CAN_ConfigFilter(C620_hcan, &sFilterConfig);
-}
-
-/**
- * @brief 模块初始化：清零所有状态
- */
-void C620_Init(void)
-{
-    memset(&C620_Feedback, 0, sizeof(C620_Feedback));
-    memset(&s_vel_pid_state, 0, sizeof(s_vel_pid_state));
-#if C620_POS_LOOP_ENABLE
-    memset(&s_pos_pid_state, 0, sizeof(s_pos_pid_state));
-    s_last_vel_cmd = 0.0f;
-#endif
-    s_ctrl_start_ms      = 0;
-    s_last_velocity      = 0;
-    C620_VelocityTarget  = 0.0f;
-    C620_DebugCommand    = 0;
-    C620_CtrlReady       = 0;
-#if C620_POS_LOOP_ENABLE
-    C620_PosTarget       = 0;
-#endif
-}
-
-/**
- * @brief 启动控制输出
- */
-void C620_Control_Start(void)
-{
-    s_ctrl_start_ms = HAL_GetTick();
-    memset(&s_vel_pid_state, 0, sizeof(s_vel_pid_state));
-#if C620_POS_LOOP_ENABLE
-    memset(&s_pos_pid_state, 0, sizeof(s_pos_pid_state));
-#endif
-    C620_CtrlReady = 1;
-}
-
-/**
- * @brief 设置速度环目标
- */
-void C620_SetVelocityTarget(float target_rpm)
-{
-    C620_VelocityTarget = target_rpm;
-}
-
-#if C620_POS_LOOP_ENABLE
-/**
- * @brief 设置位置环目标（归一化到 0~16383）
- */
-void C620_SetPositionTarget(int32_t target_raw)
-{
-    target_raw %= (int32_t)C620_ENCODER_RESOLUTION;
-    if (target_raw < 0) target_raw += (int32_t)C620_ENCODER_RESOLUTION;
-    C620_PosTarget = target_raw;
-}
-#endif
-
-/**
- * @brief 写入反馈数据（CAN 接收回调中调用）
- */
-void C620_UpdateFeedback(uint16_t angle_raw, int16_t speed_rpm,
-                         int16_t current_raw, uint8_t temperature)
-{
-    C620_Feedback.angle_raw   = angle_raw;
-    C620_Feedback.speed_rpm   = speed_rpm;
-    C620_Feedback.current_raw = current_raw;
-    C620_Feedback.temperature = temperature;
-
-    if (!C620_Feedback.initialized)
-    {
-        C620_Feedback.initialized    = 1;
-        C620_Feedback.speed_filtered = speed_rpm;
+    if (HAL_GetTick() - start_ms < 500) {
+        C620_CAN_SendMessage(can, CAN_CMD_ID, tx, 8);
         return;
     }
 
-    C620_Feedback.speed_filtered =
-        (int16_t)(0.7f * (float)C620_Feedback.speed_filtered +
-                  0.3f * (float)speed_rpm);
-}
+    error = target_rpm - feedback.speed;
 
-/**
- * @brief 1kHz 周期控制任务（放在 1ms 定时器中断里）
- *
- *        速度环 PID 参数：
- *          Kp  = C620_VEL_KP
- *          Ki  = C620_VEL_KI（大误差全增益，小误差 0.2× 减小超调）
- *          Kd  = C620_VEL_KD（用速度差分近似加速度）
- *          输出限幅 = ±(C620_CMD_RAW_MAX / 3)
- *
- *        C620 电流模式命令范围 ±16384，电压模式 ±6000。
- *        建议 PID 输出限幅先设为满功率的 1/3，调稳后逐步放大。
- */
-void C620_CAN_1kHz_Task(void)
-{
-    uint8_t tx_buf[8] = {0};
-    int16_t command   = 0;
-    float   velocity_target;
-
-    static const PID_Params_t vel_params = {
-        .kp         = C620_VEL_KP,
-        .ki         = C620_VEL_KI,
-        .kd         = C620_VEL_KD,
-        .i_limit    = C620_VEL_I_LIMIT,
-        .output_max =  C620_VEL_OUTPUT_MAX,
-        .output_min = -C620_VEL_OUTPUT_MAX,
-        .deadband   = C620_VEL_DEADBAND,
-    };
-
-    if (!C620_CtrlReady || C620_hcan == NULL) return;
-
-    /* ---- 启动前 500ms：发零帧使电调自检 ---- */
-    if (HAL_GetTick() - s_ctrl_start_ms < C620_ENABLE_ZERO_TIME_MS)
-    {
-        CAN_SendControlFrame(C620_CTRL_FRAME_ID, tx_buf);
-        return;
-    }
-
-    /* ---- 反馈未就绪 ---- */
-    if (!C620_Feedback.initialized) return;
-
-    /* ---- 确定速度目标 ---- */
-#if C620_INNER_LOOP_TEST_ENABLE
-    velocity_target = (float)C620_INNER_TEST_TARGET_RPM;
-#elif C620_POS_LOOP_ENABLE
-    velocity_target = PositionLoop_Calculate();
-#else
-    velocity_target = C620_VelocityTarget;
-#endif
-
-    /* ---- 速度环 PID ---- */
-    {
-        int32_t velocity_error =
-            (int32_t)velocity_target - (int32_t)C620_Feedback.speed_filtered;
-        float vel_output;
-
-        /* 大误差积分增益 ×1，小误差 ×0.2 减小超调 */
-        if (velocity_error < -300 || velocity_error > 300)
-            s_vel_pid_state.integral += (float)velocity_error;
+    if (feedback.speed > 300 || feedback.speed < -300) {
+        if (error > 200 || error < -200)
+            integral += error;
         else
-            s_vel_pid_state.integral += (float)velocity_error * 0.2f;
-
-        if (s_vel_pid_state.integral >  vel_params.i_limit)
-            s_vel_pid_state.integral  =  vel_params.i_limit;
-        if (s_vel_pid_state.integral < -vel_params.i_limit)
-            s_vel_pid_state.integral  = -vel_params.i_limit;
-
-        /* Kd 项：用速度差分近似加速度 */
-        vel_output = vel_params.kp * (float)velocity_error -
-                     vel_params.kd * (float)((int32_t)C620_Feedback.speed_filtered -
-                                             (int32_t)s_last_velocity) +
-                     vel_params.ki * s_vel_pid_state.integral;
-
-        if (vel_output >  (float) vel_params.output_max)
-            vel_output =  (float) vel_params.output_max;
-        if (vel_output <  (float) vel_params.output_min)
-            vel_output =  (float) vel_params.output_min;
-
-        command = (int16_t)vel_output;
-        C620_DebugCommand = command;
-        s_last_velocity   = C620_Feedback.speed_rpm;
+            integral += 0.2f * error;
     }
 
-    /* ---- 打包并发送 CAN 控制帧 0x200 ---- */
-    if (HAL_GetTick() - last_feedback_tick > C620_FEEDBACK_TIMEOUT_MS)
-    {
-        command = 0;
-    }  //超时发送0帧
-    else 
-    {
-    PackCommand(tx_buf, command, C620_MOTOR_ID_1);
-    CAN_SendControlFrame(C620_CTRL_FRAME_ID, tx_buf);
+    if (integral > MAX_INTEGRAL)
+        integral = MAX_INTEGRAL;
+    else if (integral < -MAX_INTEGRAL)
+        integral = -MAX_INTEGRAL;
+
+    out = KP * error + KI * integral + KD * (error - last_error);
+
+    if (out > MAX_OUT) {
+        integral -= (out - MAX_OUT) / KI;
+        out = MAX_OUT;
+    } else if (out < -MAX_OUT) {
+        integral -= (out + MAX_OUT) / KI;
+        out = -MAX_OUT;
+    }
+
+    last_error = error;
+
+    PackCmd(tx, (int16_t)out, MOTOR_ID);
+    C620_CAN_SendMessage(can, CAN_CMD_ID, tx, 8);
+}
+
+void SpeedTask(void)
+{
+    RunSpeedPID(TARGET_RPM);
+}
+
+void PositionTask(void)
+{
+    float pos_error, speed_target, pos_out;
+    int32_t diff;
+
+    diff = (int32_t)target_angle - (int32_t)(feedback.angle & 0x1FFF);
+    if (diff > 4096)
+        diff -= 8192;
+    else if (diff < -4096)
+        diff += 8192;
+    pos_error = (float)diff;
+
+    pos_integral += pos_error;
+    if (pos_integral > POS_INTEGRAL_MAX)
+        pos_integral = POS_INTEGRAL_MAX;
+    else if (pos_integral < -POS_INTEGRAL_MAX)
+        pos_integral = -POS_INTEGRAL_MAX;
+
+    pos_out = POS_KP * pos_error + POS_KI * pos_integral + POS_KD * (pos_error - pos_last_error);
+    pos_last_error = pos_error;
+
+    speed_target = pos_out;
+    if (speed_target > MAX_SPEED)
+        speed_target = MAX_SPEED;
+    else if (speed_target < -MAX_SPEED)
+        speed_target = -MAX_SPEED;
+
+    RunSpeedPID(speed_target);
+}
+
+void PositionStepTask(void)
+{
+    step_counter++;
+    if (step_counter >= STEP_INTERVAL_MS) {
+        step_counter = 0;
+        target_angle += STEP_ANGLE;
+        if (target_angle >= 8192.0f)
+            target_angle -= 8192.0f;
     }
 }

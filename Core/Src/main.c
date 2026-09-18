@@ -95,13 +95,7 @@ int main(void)
   MX_TIM8_Init();
   /* USER CODE BEGIN 2 */
 
-  /* ---- C620 电调初始化序列 ---- */
-  C620_BindCAN(&hcan1);
-  C620_ConfigFilter();
-  HAL_CAN_Start(&hcan1);
-  HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
-  C620_Init();
-  C620_Control_Start();
+  Motor_Init();
   HAL_TIM_OC_Start_IT(&htim8, TIM_CHANNEL_3);
 
   /* USER CODE END 2 */
@@ -113,7 +107,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    C620_SetVelocityTarget(constant_target_rpm);  // 设置目标转速（RPM）
+    
     /* USER CODE END 3 */
   }
   /* USER CODE END WHILE */
@@ -292,7 +286,7 @@ void MX_TIM1_Init(void)
   *
   * TIM8_CH3 OC 定时模式 → 1kHz 控制任务触发源：
   *   APB2 = 84MHz → TIM8 CLK = 84MHz
-  *   Prescaler = 84-1 = 83  → 计数频率 1MHz（每 μs 计数一次）
+  *   Prescaler = 168-1 = 167  → 计数频率 1MHz（每 μs 计数一次）
   *   Period    = 1000-1 = 999 → 1ms 溢出
   *   CH3 OC CCR = 999         → 比较匹配触发回调
   *   结果：每 1ms 触发一次 HAL_TIM_OC_DelayElapsedCallback
@@ -421,16 +415,14 @@ void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-/**
- * @brief  TIM8_CH3 OC 比较匹配回调 → 1kHz 控制任务入口
- *         由 HAL_TIM_IRQHandler 调用，每 1ms 触发一次
- */
+//1khz中断
 void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM8)
     {
         HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_12);
-        C620_CAN_1kHz_Task();
+        PositionStepTask();
+        PositionTask();
     }
 }
 
