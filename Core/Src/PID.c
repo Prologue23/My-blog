@@ -28,8 +28,13 @@ static float             last_error;
 static float             pos_integral;
 static float             pos_last_error;
 static uint32_t          start_ms;
-static float             target_angle;
+volatile float             target_angle;
 static uint32_t          step_counter;
+
+//Fire
+volatile uint8_t Fire = 0;
+volatile uint32_t Fire_Time = 0;
+
 
 void Motor_Init(void)
 {
@@ -79,7 +84,14 @@ static void RunSpeedPID(float target_rpm)
         return;
     }
 
-    error = target_rpm - feedback.speed;
+    if (Fire == 0)
+    {
+        C620_CAN_SendMessage(can, CAN_CMD_ID, tx, 8);
+        return;
+    }
+    else 
+    {
+        error = target_rpm - feedback.speed;
 
     if (feedback.speed > 300 || feedback.speed < -300) {
         if (error > 200 || error < -200)
@@ -107,6 +119,9 @@ static void RunSpeedPID(float target_rpm)
 
     PackCmd(tx, (int16_t)out, MOTOR_ID);
     C620_CAN_SendMessage(can, CAN_CMD_ID, tx, 8);
+
+    }
+    
 }
 
 void SpeedTask(void)

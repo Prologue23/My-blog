@@ -7,6 +7,9 @@
 #define CAN_CMD_ID      0x200
 #define CAN_FEEDBACK_ID(motor_id) (0x200 + (motor_id))
 
+extern volatile uint8_t Fire;
+extern volatile uint32_t Fire_Time;
+
 typedef struct {
     uint16_t angle;
     int16_t  speed;
