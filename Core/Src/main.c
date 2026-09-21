@@ -16,14 +16,13 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "Can.h"
-#include "PID.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "Can.h"
+#include "PID.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -40,18 +39,25 @@
 
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan1;
+
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim8;
+
+UART_HandleTypeDef huart1;
+DMA_HandleTypeDef hdma_usart1_tx;
+DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void MX_GPIO_Init(void);
-void MX_CAN1_Init(void);
-void MX_TIM1_Init(void);
-void MX_TIM8_Init(void);
+static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
+static void MX_CAN1_Init(void);
+static void MX_TIM1_Init(void);
+static void MX_TIM8_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -90,9 +96,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_CAN1_Init();
   MX_TIM1_Init();
   MX_TIM8_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
   Motor_Init();
@@ -107,10 +115,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    
-    /* USER CODE END 3 */
-  }
-  /* USER CODE END WHILE */
+  }  
+  /* USER CODE END 3 */
 }
 
 /**
@@ -160,11 +166,10 @@ void SystemClock_Config(void)
 
 /**
   * @brief CAN1 Initialization Function
-  *
-  * 波特率计算（APB1=42MHz, Prescaler=3, BS1=11TQ, BS2=2TQ）：
-  *   42MHz / 3 / (11+1+2) = 42MHz / 42 = 1MHz ✓ 大疆标准 1Mbps
+  * @param None
+  * @retval None
   */
-void MX_CAN1_Init(void)
+static void MX_CAN1_Init(void)
 {
 
   /* USER CODE BEGIN CAN1_Init 0 */
@@ -198,8 +203,10 @@ void MX_CAN1_Init(void)
 
 /**
   * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
   */
-void MX_TIM1_Init(void)
+static void MX_TIM1_Init(void)
 {
 
   /* USER CODE BEGIN TIM1_Init 0 */
@@ -283,15 +290,10 @@ void MX_TIM1_Init(void)
 
 /**
   * @brief TIM8 Initialization Function
-  *
-  * TIM8_CH3 OC 定时模式 → 1kHz 控制任务触发源：
-  *   APB2 = 84MHz → TIM8 CLK = 84MHz
-  *   Prescaler = 168-1 = 167  → 计数频率 1MHz（每 μs 计数一次）
-  *   Period    = 1000-1 = 999 → 1ms 溢出
-  *   CH3 OC CCR = 999         → 比较匹配触发回调
-  *   结果：每 1ms 触发一次 HAL_TIM_OC_DelayElapsedCallback
+  * @param None
+  * @retval None
   */
-void MX_TIM8_Init(void)
+static void MX_TIM8_Init(void)
 {
 
   /* USER CODE BEGIN TIM8_Init 0 */
@@ -351,8 +353,8 @@ void MX_TIM8_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_TIMING;
   sConfigOC.Pulse  = 999;
+  sConfigOC.OCMode = TIM_OCMODE_TIMING;
   if (HAL_TIM_OC_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
@@ -376,9 +378,63 @@ void MX_TIM8_Init(void)
 }
 
 /**
-  * @brief GPIO Initialization Function
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
   */
-void MX_GPIO_Init(void)
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 9600;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+  /* DMA2_Stream7_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
+
+}
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
@@ -386,11 +442,11 @@ void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOI_CLK_ENABLE();
   __HAL_RCC_GPIOH_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOH, GPIO_PIN_12|GPIO_PIN_11|GPIO_PIN_10, GPIO_PIN_RESET);
