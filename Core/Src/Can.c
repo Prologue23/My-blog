@@ -16,10 +16,10 @@ HAL_StatusTypeDef Init_Filter(CAN_HandleTypeDef *hcan, uint32_t filter_id, uint3
     CAN_FilterInitStructure.FilterScale = filter_scale;
     CAN_FilterInitStructure.FilterMode = filter_mode;
     CAN_FilterInitStructure.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-    CAN_FilterInitStructure.FilterIdHigh = (filter_id << 5) >> 16; // Shift left to align with ID bits
-    CAN_FilterInitStructure.FilterIdLow = (filter_id << 5) & 0xFFFF; // Lower 16 bits
-    CAN_FilterInitStructure.FilterMaskIdHigh = (filter_mask << 5) >> 16; // Shift left to align with mask bits
-    CAN_FilterInitStructure.FilterMaskIdLow = (filter_mask << 5) & 0xFFFF; // Lower 16 bits
+    CAN_FilterInitStructure.FilterIdHigh = (filter_id << 5) >> 16; 
+    CAN_FilterInitStructure.FilterIdLow = (filter_id << 5) & 0xFFFF; 
+    CAN_FilterInitStructure.FilterMaskIdHigh = (filter_mask << 5) >> 16; 
+    CAN_FilterInitStructure.FilterMaskIdLow = (filter_mask << 5) & 0xFFFF; 
     CAN_FilterInitStructure.FilterActivation = ENABLE;
 
     if (HAL_CAN_ConfigFilter(hcan, &CAN_FilterInitStructure) != HAL_OK) {

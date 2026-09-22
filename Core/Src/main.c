@@ -47,7 +47,11 @@ UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
 
+extern uint8_t Fire;
+extern uint32_t FireTime;
+
 /* USER CODE BEGIN PV */
+uint8_t receiveData[50];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -64,7 +68,23 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+  if (huart == &huart1)
+  {
+    HAL_UART_Transmit_DMA(&huart1, receiveData, Size);
 
+    if (receiveData[0] != 0)
+    {
+      Fire = 1;
+      FireTime = HAL_GetTick();
+    }
+
+
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart1,receiveData,sizeof(receiveData));
+    __HAL_DMA_DISABLE_IT(&hdma_usart1_rx,DMA_IT_HT);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -105,6 +125,8 @@ int main(void)
 
   Motor_Init();
   HAL_TIM_OC_Start_IT(&htim8, TIM_CHANNEL_3);
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart1,receiveData,sizeof(receiveData));
+  __HAL_DMA_DISABLE_IT(&hdma_usart1_rx,DMA_IT_HT);
 
   /* USER CODE END 2 */
 
@@ -113,7 +135,10 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-
+    if (FireTime - HAL_GetTick() > 500)
+    {
+      Fire = 0;
+    }
     /* USER CODE BEGIN 3 */
   }  
   /* USER CODE END 3 */

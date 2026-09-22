@@ -31,6 +31,13 @@ static uint32_t          start_ms;
 static float             target_angle;
 static uint32_t          step_counter;
 
+//Fire
+
+uint8_t Fire = 0;
+uint32_t FireTime = 0;
+
+
+
 void Motor_Init(void)
 {
     CAN_FilterTypeDef f = {0};
@@ -78,6 +85,13 @@ static void RunSpeedPID(float target_rpm)
         C620_CAN_SendMessage(can, CAN_CMD_ID, tx, 8);
         return;
     }
+
+    if(Fire == 0)
+    {
+        C620_CAN_SendMessage(can, CAN_CMD_ID, tx, 8);
+        return;
+    }
+
 
     error = target_rpm - feedback.speed;
 
