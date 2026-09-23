@@ -160,11 +160,15 @@ void PositionTask(void)
 
 void PositionStepTask(void)
 {
-    step_counter++;
-    if (step_counter >= STEP_INTERVAL_MS) {
-        step_counter = 0;
-        target_angle += STEP_ANGLE;
-        if (target_angle >= 8192.0f)
+    if (Fire == 1)
+    {
+        step_counter++;
+        if (step_counter >= STEP_INTERVAL_MS) 
+        {
+            step_counter = 0;
+            target_angle += STEP_ANGLE;
+            if (target_angle >= 8192.0f)
             target_angle -= 8192.0f;
+        }
     }
 }

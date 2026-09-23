@@ -129,8 +129,8 @@ int main(void)
 
   Motor_Init();
   HAL_TIM_OC_Start_IT(&htim8, TIM_CHANNEL_3);
-  //HAL_UARTEx_ReceiveToIdle_DMA(&huart6,receiveData,sizeof(receiveData));
-  //__HAL_DMA_DISABLE_IT(&hdma_usart6_rx,DMA_IT_HT);
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart6,receiveData,sizeof(receiveData));
+  __HAL_DMA_DISABLE_IT(&hdma_usart6_rx,DMA_IT_HT);
 
   /* USER CODE END 2 */
 
@@ -141,18 +141,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if (huart6.Instance->SR & USART_SR_RXNE)
-    {
-      uint8_t ch = (uint8_t)(huart6.Instance->DR);
-      HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_11);  // 用 PH11，别用 PH12
-        
-        if (ch != 0)
-        {
-            Fire = 1;
-            FireTime = HAL_GetTick();
-        }
-    }
-    if (HAL_GetTick() - FireTime > 500)
+    
+    if (HAL_GetTick() - FireTime > 200)
     {
       Fire = 0;
     }
