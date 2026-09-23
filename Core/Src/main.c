@@ -44,14 +44,16 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim8;
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart6;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
-
-extern uint8_t Fire;
-extern uint32_t FireTime;
+DMA_HandleTypeDef hdma_usart6_tx;
+DMA_HandleTypeDef hdma_usart6_rx;
 
 /* USER CODE BEGIN PV */
-uint8_t receiveData[50];
+volatile uint8_t receiveData[50];
+extern uint8_t Fire;
+extern uint32_t FireTime;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -62,6 +64,7 @@ static void MX_CAN1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM8_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_USART6_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -70,9 +73,9 @@ static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN 0 */
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
 {
-  if (huart == &huart1)
+  if (huart == &huart6)
   {
-    HAL_UART_Transmit_DMA(&huart1, receiveData, Size);
+    HAL_UART_Transmit_DMA(&huart6, receiveData, Size);
 
     if (receiveData[0] != 0)
     {
@@ -81,8 +84,8 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
     }
 
 
-    HAL_UARTEx_ReceiveToIdle_DMA(&huart1,receiveData,sizeof(receiveData));
-    __HAL_DMA_DISABLE_IT(&hdma_usart1_rx,DMA_IT_HT);
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart6,receiveData,sizeof(receiveData));
+    __HAL_DMA_DISABLE_IT(&hdma_usart6_rx,DMA_IT_HT);
   }
 }
 /* USER CODE END 0 */
@@ -121,12 +124,13 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM8_Init();
   MX_USART1_UART_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
 
   Motor_Init();
   HAL_TIM_OC_Start_IT(&htim8, TIM_CHANNEL_3);
-  HAL_UARTEx_ReceiveToIdle_DMA(&huart1,receiveData,sizeof(receiveData));
-  __HAL_DMA_DISABLE_IT(&hdma_usart1_rx,DMA_IT_HT);
+  //HAL_UARTEx_ReceiveToIdle_DMA(&huart6,receiveData,sizeof(receiveData));
+  //__HAL_DMA_DISABLE_IT(&hdma_usart6_rx,DMA_IT_HT);
 
   /* USER CODE END 2 */
 
@@ -135,11 +139,23 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-    if (FireTime - HAL_GetTick() > 500)
+
+    /* USER CODE BEGIN 3 */
+    if (huart6.Instance->SR & USART_SR_RXNE)
+    {
+      uint8_t ch = (uint8_t)(huart6.Instance->DR);
+      HAL_GPIO_TogglePin(GPIOH, GPIO_PIN_11);  // 用 PH11，别用 PH12
+        
+        if (ch != 0)
+        {
+            Fire = 1;
+            FireTime = HAL_GetTick();
+        }
+    }
+    if (HAL_GetTick() - FireTime > 500)
     {
       Fire = 0;
     }
-    /* USER CODE BEGIN 3 */
   }  
   /* USER CODE END 3 */
 }
@@ -283,10 +299,6 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
@@ -378,7 +390,6 @@ static void MX_TIM8_Init(void)
   {
     Error_Handler();
   }
-  sConfigOC.Pulse  = 999;
   sConfigOC.OCMode = TIM_OCMODE_TIMING;
   if (HAL_TIM_OC_ConfigChannel(&htim8, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
@@ -436,6 +447,39 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
+  * @brief USART6 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART6_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART6_Init 0 */
+
+  /* USER CODE END USART6_Init 0 */
+
+  /* USER CODE BEGIN USART6_Init 1 */
+
+  /* USER CODE END USART6_Init 1 */
+  huart6.Instance = USART6;
+  huart6.Init.BaudRate = 9600;
+  huart6.Init.WordLength = UART_WORDLENGTH_8B;
+  huart6.Init.StopBits = UART_STOPBITS_1;
+  huart6.Init.Parity = UART_PARITY_NONE;
+  huart6.Init.Mode = UART_MODE_TX_RX;
+  huart6.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart6.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart6) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART6_Init 2 */
+
+  /* USER CODE END USART6_Init 2 */
+
+}
+
+/**
   * Enable DMA controller clock
   */
 static void MX_DMA_Init(void)
@@ -445,9 +489,15 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA2_CLK_ENABLE();
 
   /* DMA interrupt init */
+  /* DMA2_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream1_IRQn);
   /* DMA2_Stream2_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+  /* DMA2_Stream6_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream6_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream6_IRQn);
   /* DMA2_Stream7_IRQn interrupt configuration */
   HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
@@ -467,6 +517,7 @@ static void MX_GPIO_Init(void)
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOG_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
