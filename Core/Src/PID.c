@@ -1,10 +1,11 @@
 #include "PID.h"
 #include "Can.h"
 #include "stm32f4xx_hal.h"
+#include <stdint.h>
 #include <string.h>
 
 //PID
-#define KP              0.6f
+#define KP              5.0f
 #define KI              0.005f
 #define KD              0.5f
 #define TARGET_RPM      1000
@@ -17,25 +18,25 @@
 #define MAX_SPEED       3000
 #define POS_INTEGRAL_MAX 1000.0f
 
-#define STEP_INTERVAL_MS  200
-#define STEP_ANGLE        1000
+#define STEP_INTERVAL_MS  500
+#define STEP_ANGLE        1365
 
 //CAN
-static volatile MotorInfo feedback;
-static CAN_HandleTypeDef *can;
-static volatile float    integral;
-static float             last_error;
-static float             pos_integral;
-static float             pos_last_error;
-static uint32_t          start_ms;
-static float             target_angle;
-static uint32_t          step_counter;
+volatile MotorInfo          feedback;
+static CAN_HandleTypeDef    *can;
+static volatile float       integral;
+static float                last_error;
+static float                pos_integral;
+static float                pos_last_error;
+static uint32_t             start_ms;
+uint32_t                    target_angle;
+static uint32_t             step_timer;
 
 //Fire
 
+uint8_t Enable = 0;
 uint8_t Fire = 0;
-uint32_t FireTime = 0;
-
+uint8_t step_counter = 0;
 
 
 void Motor_Init(void)
@@ -62,6 +63,7 @@ void Motor_Init(void)
     start_ms        = HAL_GetTick();
     target_angle    = 0;
     step_counter    = 0;
+    step_timer      = HAL_GetTick();
 }
 
 void UpdateFeedback(const MotorInfo *fb)
@@ -86,7 +88,7 @@ static void RunSpeedPID(float target_rpm)
         return;
     }
 
-    if(Fire == 0)
+    if(Enable == 0)
     {
         C620_CAN_SendMessage(can, CAN_CMD_ID, tx, 8);
         return;
@@ -160,15 +162,29 @@ void PositionTask(void)
 
 void PositionStepTask(void)
 {
-    if (Fire == 1)
+    if (Enable == 1)
     {
-        step_counter++;
-        if (step_counter >= STEP_INTERVAL_MS) 
+        if (Fire != 0)
         {
-            step_counter = 0;
-            target_angle += STEP_ANGLE;
-            if (target_angle >= 8192.0f)
-            target_angle -= 8192.0f;
+            if (step_counter < Fire)
+            {
+                if (HAL_GetTick() - step_timer >= STEP_INTERVAL_MS)
+                {
+                    step_timer = HAL_GetTick();
+                    target_angle += STEP_ANGLE;
+                    if (target_angle >= 8192.0f)
+                        target_angle -= 8192.0f;
+                    step_counter++;
+                }
+            }
+            else
+            {
+                step_counter = 0;
+                Fire = 0;
+            }
+
         }
     }
 }
+
+

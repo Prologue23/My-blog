@@ -51,9 +51,12 @@ DMA_HandleTypeDef hdma_usart6_tx;
 DMA_HandleTypeDef hdma_usart6_rx;
 
 /* USER CODE BEGIN PV */
-volatile uint8_t receiveData[50];
-extern uint8_t Fire;
-extern uint32_t FireTime;
+uint8_t receiveData[50];
+extern uint8_t            Enable;
+extern uint8_t            Fire;
+extern uint32_t           target_angle;
+extern volatile MotorInfo feedback;
+extern uint32_t           step_timer;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -77,10 +80,34 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
   {
     HAL_UART_Transmit_DMA(&huart6, receiveData, Size);
 
-    if (receiveData[0] != 0)
+    if (receiveData[0] == 0xAA)
     {
-      Fire = 1;
-      FireTime = HAL_GetTick();
+      if (receiveData[1] == Size)
+      {
+        uint8_t sum = 0;
+        for (int i = 0; i < Size - 1; i++)
+        {
+          sum += receiveData[i];
+        }
+
+        if ((sum) == receiveData[Size - 1])
+        {
+          if (receiveData[2] == 0xFF)
+          {
+            Enable = 1;
+            target_angle = feedback.angle;
+          }
+          else if (receiveData[2] == 0x00)
+          {
+            Enable = 0;
+          } 
+          else
+          {
+            Fire = receiveData[2];
+          }
+
+        }
+      }
     }
 
 
@@ -142,10 +169,9 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     
-    if (HAL_GetTick() - FireTime > 200)
-    {
-      Fire = 0;
-    }
+    
+
+    
   }  
   /* USER CODE END 3 */
 }
