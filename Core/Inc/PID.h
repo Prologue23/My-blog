@@ -19,5 +19,6 @@ void SpeedTask(void);
 void PositionTask(void);
 void PositionStepTask(void);
 void UpdateFeedback(const MotorInfo *fb);
+void UpdateRoundCounter(void);
 
 #endif

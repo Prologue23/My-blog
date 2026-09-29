@@ -95,11 +95,12 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
           if (receiveData[2] == 0xFF)
           {
             Enable = 1;
-            target_angle = feedback.angle;
+            target_angle = feedback.angle + round_counter * 8192;
           }
           else if (receiveData[2] == 0x00)
           {
             Enable = 0;
+            target_angle = feedback.angle + round_counter * 8192;
           } 
           else
           {

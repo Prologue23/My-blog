@@ -18,8 +18,11 @@
 #define MAX_SPEED       3000
 #define POS_INTEGRAL_MAX 1000.0f
 
+
 #define STEP_INTERVAL_MS  500
-#define STEP_ANGLE        1365
+#define STEP_ANGLE        9557      //1365是60度
+#define VEL_DEADBAND      100.0f
+#define HALF_ROUND        4096
 
 //CAN
 volatile MotorInfo          feedback;
@@ -31,6 +34,9 @@ static float                pos_last_error;
 static uint32_t             start_ms;
 uint32_t                    target_angle;
 static uint32_t             step_timer;
+static uint32_t             round_counter;
+static uint32_t             last_angle;
+static float                last_speed;
 
 //Fire
 
@@ -64,11 +70,17 @@ void Motor_Init(void)
     target_angle    = 0;
     step_counter    = 0;
     step_timer      = HAL_GetTick();
+    round_counter   = 0;
+    last_angle      = feedback.angle;
 }
 
 void UpdateFeedback(const MotorInfo *fb)
 {
     feedback = *fb;
+    feedback.speed = (float)feedback.speed*0.3f + (float)last_speed*0.7f;
+    UpdateRoundCounter();
+    last_speed = feedback.speed;
+    last_angle = feedback.angle;
 }
 
 static void PackCmd(uint8_t *buf, int16_t current, uint8_t id)
@@ -135,12 +147,11 @@ void PositionTask(void)
     float pos_error, speed_target, pos_out;
     int32_t diff;
 
-    diff = (int32_t)target_angle - (int32_t)(feedback.angle & 0x1FFF);
-    if (diff > 4096)
-        diff -= 8192;
-    else if (diff < -4096)
-        diff += 8192;
+    diff = (int32_t)target_angle - (int32_t)(feedback.angle + round_counter * 8192);
+    
     pos_error = (float)diff;
+
+
 
     pos_integral += pos_error;
     if (pos_integral > POS_INTEGRAL_MAX)
@@ -172,8 +183,6 @@ void PositionStepTask(void)
                 {
                     step_timer = HAL_GetTick();
                     target_angle += STEP_ANGLE;
-                    if (target_angle >= 8192.0f)
-                        target_angle -= 8192.0f;
                     step_counter++;
                 }
             }
@@ -187,4 +196,21 @@ void PositionStepTask(void)
     }
 }
 
-
+void UpdateRoundCounter()
+{
+    int32_t delta = (int32_t)feedback.angle - (int32_t)last_angle;
+    if (delta > HALF_ROUND)
+    {
+        if (feedback.speed < -VEL_DEADBAND)
+        {
+            round_counter--;
+        }
+    }
+    else if (delta < -HALF_ROUND)
+    {
+        if (feedback.speed > VEL_DEADBAND)
+        {
+            round_counter++;
+        }
+    }
+}
