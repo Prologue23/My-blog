@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "arm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,13 +41,15 @@
 
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
-
+uint8_t receiveData[50];
+uint8_t command = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -56,13 +58,40 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
+{
+  if (huart->Instance == USART1)
+  {
+    HAL_UART_Transmit_DMA(&huart1, receiveData, Size);
 
+    if (receiveData[0] == 0xBB)
+    {
+      if (receiveData[1] == Size)
+      {
+        uint8_t sum = 0;
+        for (int i = 0 ; i < Size - 1; i++)
+        {
+          sum += receiveData[i];
+        }
+
+        if (sum == receiveData[Size - 1])
+        {
+          command = receiveData[2];
+        }
+      }
+    }
+
+    HAL_UARTEx_ReceiveToIdle_DMA(&huart1, receiveData, sizeof(receiveData));
+    __HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT);
+  }
+}
 /* USER CODE END 0 */
 
 /**
@@ -97,17 +126,103 @@ int main(void)
   MX_DMA_Init();
   MX_USART1_UART_Init();
   MX_TIM1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+  HAL_UARTEx_ReceiveToIdle_DMA(&huart1, receiveData,sizeof(receiveData));
+  __HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT);
 
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+
+  extern float angle[5];
+  extern float degree[5];
+  float duty[5] = {0,0,0,0};
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    for (int i = 0; i < 5; i++)
+    {
+      
+      if (degree[i] > 180)
+      {
+        degree[i] = 180;
+      }
+      else if (degree[i] < 0)
+      {
+        degree[i] = 0;
+      }
+      angle[i] = degree[i];
+    }
+
+    //空间角度与舵机角度的转换关系
+    for (int i = 0; i < 5; i++)
+    {
+      duty[i] = ( 10 * (float)angle[i] / 180.0 + 2.5 ) / 100.0 * 2000;
+      if (i == 0)
+      {
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, duty[i]);
+      }
+      else if (i == 1)
+      {
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, duty[i]);
+      }
+      else if (i == 2)
+      {
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, duty[i]);
+      }
+      else if (i == 3)
+      {
+        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, duty[i]);
+      }
+      else if (i == 4)
+      {
+        __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, duty[i]);
+      }
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+      if (command == 0x01)
+      {
+          arm_Move_forward();
+          command = 0x00;
+      }
+      else if (command == 0x02)
+      {
+          arm_Move_back();
+          command = 0x00;
+      }
+      else if (command == 0x03)
+      {
+          arm_Move_left();
+          command = 0x00;
+      }
+      else if (command == 0x04)
+      {
+          arm_Move_right();
+          command = 0x00;
+      }
+      else if (command == 0x05)
+      {
+          arm_Move_up();
+          command = 0x00;
+      }
+      else if (command == 0x06)
+      {
+          arm_Move_down();
+          command = 0x00;
+      }
+      else if (command == 0x07)
+      {
+          arm_Claw_change();
+          command = 0x00;
+      }
   }
   /* USER CODE END 3 */
 }
@@ -235,6 +350,65 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 719;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 1999;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
 
 }
 
