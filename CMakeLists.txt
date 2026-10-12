@@ -45,8 +45,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
-    Core/Src/PID.c
-    Core/Src/Can.c
+    Core/Src/Mecanum.c
+    Core/Src/PWM.c
 )
 
 # Add include paths

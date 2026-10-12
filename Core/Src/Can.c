@@ -1,7 +1,8 @@
 #include "Can.h"
 #include "PID.h"
 #include "stm32f4xx_hal_can.h"
-#include <stdint.h>
+#include "stdint.h"
+#include "PWM.h"
 
 void CAN_Config(void) {
     // Configure CAN peripheral
