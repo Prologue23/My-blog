@@ -1,0 +1,63 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "STM32_RM: configure Debug",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--fresh",
+        "--preset",
+        "Debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/STM32_RM"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "STM32_RM: build Debug",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "Debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/STM32_RM"
+      },
+      "problemMatcher": [],
+      "dependsOn": "STM32_RM: configure Debug"
+    },
+    {
+      "label": "Lower_Machine: configure Debug",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--fresh",
+        "--preset",
+        "Debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/Lower_Machine_bak"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Lower_Machine: build Debug",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build",
+        "--preset",
+        "Debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/Lower_Machine_bak"
+      },
+      "problemMatcher": [],
+      "dependsOn": "Lower_Machine: configure Debug"
+    }
+  ]
+}

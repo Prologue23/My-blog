@@ -1,0 +1,31 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "STM32_RM (J-Link SWD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "jlink",
+      "device": "STM32F407IG",
+      "interface": "swd",
+      "speed": 4000,
+      "executable": "${workspaceFolder}/STM32_RM/build/Debug/STM32_RM.elf",
+      "cwd": "${workspaceFolder}/STM32_RM",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "STM32_RM: build Debug"
+    },
+    {
+      "name": "Lower_Machine (J-Link SWD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "servertype": "jlink",
+      "device": "STM32F103C8",
+      "interface": "swd",
+      "speed": 4000,
+      "executable": "${workspaceFolder}/Lower_Machine_bak/build/Debug/Lower_Machine.elf",
+      "cwd": "${workspaceFolder}/Lower_Machine_bak",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "Lower_Machine: build Debug"
+    }
+  ]
+}

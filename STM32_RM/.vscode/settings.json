@@ -6,7 +6,7 @@
         "type": "cortex-debug",
         "request": "launch",
         "servertype": "jlink",
-        "device": "STM32F407VE",
+        "device": "STM32F407IG",
         "interface": "swd",
         "speed": 4000,
         "runToEntryPoint": "main"
