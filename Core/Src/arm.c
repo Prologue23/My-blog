@@ -40,8 +40,8 @@ z=L1 * ​sinθ1 + L2 * ​sin(θ1 + θ2)
 */
 
 
-float angle[5] = {0,0,0,0,0}; //顺序为yaw，pitch_1，pitch_2，pitch_3，claw  描述的是舵机角度
-float degree[5] = {0,0,0,0,0}; //顺序为yaw，pitch_1，pitch_2，pitch_3，claw 描述的是实际空间角
+extern float angle[7]; //顺序为yaw，pitch_1，pitch_2，pitch_3，claw，rocker，foot  描述的是舵机角度
+extern float degree[7]; //顺序为yaw，pitch_1，pitch_2，pitch_3，claw，rocker，foot 描述的是实际空间角
 
 
 

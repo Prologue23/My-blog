@@ -22,6 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "arm.h"
+#include "Chassis.h"
+#include "PWM.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -50,6 +52,10 @@ DMA_HandleTypeDef hdma_usart1_rx;
 /* USER CODE BEGIN PV */
 uint8_t receiveData[50];
 uint8_t command = 0;
+uint8_t task = 0;
+float angle[7];
+float degree[7];
+float duty[7] = {0,0,0,0,0,0,0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -70,7 +76,7 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
   if (huart->Instance == USART1)
   {
     HAL_UART_Transmit_DMA(&huart1, receiveData, Size);
-
+  
     if (receiveData[0] == 0xBB)
     {
       if (receiveData[1] == Size)
@@ -87,9 +93,27 @@ void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size)
         }
       }
     }
+  
 
+    if (receiveData[0] == 0xCC)
+    {
+      if (receiveData[1] == Size)
+      {
+        uint8_t sum = 0;
+        for (int i = 0; i < Size - 1; i++)
+        {
+          sum += receiveData[i];
+        }
+
+        if ((sum) == receiveData[Size - 1])
+        {
+          task = receiveData[2];
+        }
+      }
+    }
     HAL_UARTEx_ReceiveToIdle_DMA(&huart1, receiveData, sizeof(receiveData));
     __HAL_DMA_DISABLE_IT(&hdma_usart1_rx, DMA_IT_HT);
+    
   }
 }
 /* USER CODE END 0 */
@@ -136,93 +160,24 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_3);
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_4);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
-  extern float angle[5];
-  extern float degree[5];
-  float duty[5] = {0,0,0,0};
+  Chassis_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    for (int i = 0; i < 5; i++)
-    {
-      
-      if (degree[i] > 180)
-      {
-        degree[i] = 180;
-      }
-      else if (degree[i] < 0)
-      {
-        degree[i] = 0;
-      }
-      angle[i] = degree[i];
-    }
+    PWM_SetAngle();
 
     //空间角度与舵机角度的转换关系
-    for (int i = 0; i < 5; i++)
-    {
-      duty[i] = ( 10 * (float)angle[i] / 180.0 + 2.5 ) / 100.0 * 2000;
-      if (i == 0)
-      {
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_1, duty[i]);
-      }
-      else if (i == 1)
-      {
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, duty[i]);
-      }
-      else if (i == 2)
-      {
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_3, duty[i]);
-      }
-      else if (i == 3)
-      {
-        __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_4, duty[i]);
-      }
-      else if (i == 4)
-      {
-        __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, duty[i]);
-      }
-    }
+      PWM_SetDuty();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-      if (command == 0x01)
-      {
-          arm_Move_forward();
-          command = 0x00;
-      }
-      else if (command == 0x02)
-      {
-          arm_Move_back();
-          command = 0x00;
-      }
-      else if (command == 0x03)
-      {
-          arm_Move_left();
-          command = 0x00;
-      }
-      else if (command == 0x04)
-      {
-          arm_Move_right();
-          command = 0x00;
-      }
-      else if (command == 0x05)
-      {
-          arm_Move_up();
-          command = 0x00;
-      }
-      else if (command == 0x06)
-      {
-          arm_Move_down();
-          command = 0x00;
-      }
-      else if (command == 0x07)
-      {
-          arm_Claw_change();
-          command = 0x00;
-      }
+    PWM_Control();
   }
   /* USER CODE END 3 */
 }
@@ -402,6 +357,14 @@ static void MX_TIM2_Init(void)
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
   {
     Error_Handler();
   }
