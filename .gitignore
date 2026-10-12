@@ -1,0 +1,73 @@
+# Build outputs
+build/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.ninja
+.ninja_*
+compile_commands.json
+
+# Compiled and generated binaries
+*.a
+*.d
+*.dll
+*.elf
+*.exe
+*.hex
+*.lib
+*.map
+*.o
+*.obj
+*.out
+*.pdb
+*.su
+*.bin
+
+# OpenCV learning generated directories and executables
+C++/exe/
+C++/**/OpenCV_learning/learning_project_3.*/learning_project_3.*/
+C++/**/OpenCV_learning/learning_project_3.1/opencv_3.1.1
+C++/**/OpenCV_learning/learning_project_3.1/opencv_3.1.2
+C++/**/OpenCV_learning/learning_project_3.2/learning_project_3.2.1
+C++/**/OpenCV_learning/learning_project_3.2/learning_project_3.2.2
+C++/**/OpenCV_learning/learning_project_3.3/learning_project_3.3
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE, editor, and OS files
+.idea/
+.vs/
+*.user
+*.suo
+*.swp
+*.swo
+*~
+.DS_Store
+__MACOSX/
+Thumbs.db
+Desktop.ini
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+
+# Logs and temporary files
+*.log
+*.tmp
+*.stackdump
+mx.scratch/
