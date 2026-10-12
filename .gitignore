@@ -26,6 +26,7 @@ compile_commands.json
 
 # OpenCV learning generated directories and executables
 C++/exe/
+C++/**/bin/**
 C++/**/OpenCV_learning/learning_project_3.*/learning_project_3.*/
 C++/**/OpenCV_learning/learning_project_3.1/opencv_3.1.1
 C++/**/OpenCV_learning/learning_project_3.1/opencv_3.1.2
