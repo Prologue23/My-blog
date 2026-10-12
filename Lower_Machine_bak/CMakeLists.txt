@@ -46,6 +46,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/main.c
     Core/Src/arm.c
+    Core/Src/Chassis.c
+    Core/Src/PWM.c
     # Add user sources here
 )
 

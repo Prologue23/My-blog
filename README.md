@@ -198,6 +198,8 @@ cd Python\mit6_100l_f22_ps2_code\1_ps2
 python -m unittest test_ps2_student.py
 ```
 
+该目录是课程习题模板，`hangman.py` 仍保留多处 `pass` 占位。完成函数实现前，单元测试会失败，这是题目状态而不是环境配置错误。
+
 ## C 和 C++ 示例
 
 ### C 文件
