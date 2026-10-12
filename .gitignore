@@ -71,4 +71,5 @@ secrets*.json
 *.log
 *.tmp
 *.stackdump
+run_game_test_results.txt
 mx.scratch/
